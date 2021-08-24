@@ -1,0 +1,43 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: load-askgit-data
+spec:
+  concurrencyPolicy: "Forbid"
+  startingDeadlineSeconds: 100
+  schedule: "03 */6 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            run: load-askgit-data
+        spec:
+          containers:
+          - name: askgit-postgres
+            image: benjvi/askgit-postgres
+            imagePullPolicy: Always
+            command: 
+            - /bin/sh
+            - -c
+            - apt-get update && apt-get install openssh-client bash; eval $(ssh-agent -s); mkdir /root/.ssh/; cp /root/ssh-mount/privkey /root/.ssh/id_rsa; chmod 600 /root/.ssh/id_rsa; ssh-keyscan -t rsa github.com > ~/.ssh/known_hosts; ssh-add /root/.ssh/id_rsa; git clone "$GIT_REPO_URL"; ls ; cd "$GIT_REPO_NAME"; psql -c "drop table commits cascade; drop table stats cascade;"; ../askgit export monitoring/askgit-commits-stats-db.sqlite3 -e commits -e "select hash as id,* from commits;" -e stats -e "SELECT commits.hash as "commit_id", stats.file_path as "file", stats.additions, stats.deletions FROM commits, stats('', commits.hash)"; cd monitoring; echo "select count(*) from commits; select count(*) from stats;" | sqlite3 askgit-commits-stats-db.sqlite3; pgloader askgit-sqlite-to-postgres.txt; psql -f "create-package-deploy-view.sql"
+            envFrom:
+            - secretRef:
+                name: postgres-creds
+            # overrides PGDATABASE value set in secret (last specified wins)
+            env:
+            - name: PGDATABASE
+              value: askgit
+            - name: GIT_REPO_URL
+              value: <repo ssh url here>
+            - name: GIT_REPO_NAME
+              value: <repo name here>
+            volumeMounts:
+            - name: deploy-key
+              mountPath: /root/ssh-mount
+          restartPolicy: OnFailure
+          volumes:
+          # secret must contain ssh private key data in 'privkey' key
+          - name: deploy-key
+            secret:
+              secretName: repo-ssh-deploy-key
