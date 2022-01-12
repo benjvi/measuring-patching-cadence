@@ -1,4 +1,4 @@
--- first, use askgit to export git data to sqlite file: `askgit export monitoring/askgit-commits-stats-db -e commits -e "select * from commits" -e stats -e "select * from stats"`
+-- first, use askgit to export git data to sqlite file: `askgit export askgit-commits-stats-db.sqlite3 -e commits -e "select hash as id,* from commits;" -e stats -e "SELECT commits.hash as "commit_id", stats.file_path as "file", stats.additions, stats.deletions FROM commits, stats('', commits.hash)"`
 -- then load the data into postgres based on the config in this file: `pgloader askgit-sqlite-to-postgres.txt`
 
 load database
